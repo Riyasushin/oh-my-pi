@@ -2653,6 +2653,33 @@ message PlanStatus {
   int64 weekly_quota_reset_at_unix = 18;
 }
 
+// Partner subscriptions linked to the account (Devin's "token sharing"): when a
+// partner plan is active, Devin bills that partner's models to the linked
+// subscription instead of the account's Devin quota. The enum and field names
+// come from the server's own JSON output; the message names are not published,
+// so they mirror that JSON shape.
+enum PartnerProvider {
+  PARTNER_PROVIDER_UNSPECIFIED = 0;
+  PARTNER_PROVIDER_OPENAI = 1;
+}
+
+message PartnerProviderActiveStatus {
+  string info = 1;
+}
+
+message PartnerProviderStatus {
+  // `active` is the only variant observed on the wire. Other states (expired
+  // grant, plan too low, never linked) arrive as unknown fields, so an absent
+  // `active` means "not billing to this partner" rather than a known state.
+  .exa.codeium_common_pb.PartnerProviderActiveStatus active = 1;
+}
+
+message PartnerProviderInfo {
+  .exa.codeium_common_pb.PartnerProvider partner = 1;
+  string toggle_label = 2;
+  .exa.codeium_common_pb.PartnerProviderStatus status = 3;
+}
+
 message UserStatus {
   reserved 12;
   reserved "plan_info";
@@ -2678,6 +2705,7 @@ message UserStatus {
   .google.protobuf.Timestamp windsurf_pro_trial_end_time = 34;
   int64 max_num_premium_chat_messages = 35;
   string user_id = 36;
+  repeated .exa.codeium_common_pb.PartnerProviderInfo partner_providers = 37;
 }
 
 message ScmWorkspaceInfo {

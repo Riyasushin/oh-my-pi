@@ -950,6 +950,12 @@ export enum ModelType {
 	QUERY = 4,
 }
 
+/** Devin enum PartnerProvider. */
+export enum PartnerProvider {
+	UNSPECIFIED = 0,
+	OPENAI = 1,
+}
+
 /** Devin enum Permission. */
 export enum Permission {
 	UNSPECIFIED = 0,
@@ -2170,6 +2176,37 @@ export const OpenAIInferenceConfigSchema: MessageCodec<OpenAIInferenceConfig> = 
 	{ no: 3, name: "extendedPromptCacheRetention", kind: "bool" },
 ]);
 
+/** Devin message exa.codeium_common_pb.PartnerProviderActiveStatus. */
+export interface PartnerProviderActiveStatus extends ProtoMessage {
+	info: string;
+}
+
+export const PartnerProviderActiveStatusSchema: MessageCodec<PartnerProviderActiveStatus> = pb<PartnerProviderActiveStatus>("exa.codeium_common_pb.PartnerProviderActiveStatus", [
+	{ no: 1, name: "info", kind: "string" },
+]);
+
+/** Devin message exa.codeium_common_pb.PartnerProviderInfo. */
+export interface PartnerProviderInfo extends ProtoMessage {
+	partner: PartnerProvider;
+	toggleLabel: string;
+	status?: PartnerProviderStatus;
+}
+
+export const PartnerProviderInfoSchema: MessageCodec<PartnerProviderInfo> = pb<PartnerProviderInfo>("exa.codeium_common_pb.PartnerProviderInfo", [
+	{ no: 1, name: "partner", kind: "enum" },
+	{ no: 2, name: "toggleLabel", kind: "string" },
+	{ no: 3, name: "status", kind: "message", T: () => PartnerProviderStatusSchema },
+]);
+
+/** Devin message exa.codeium_common_pb.PartnerProviderStatus. */
+export interface PartnerProviderStatus extends ProtoMessage {
+	active?: PartnerProviderActiveStatus;
+}
+
+export const PartnerProviderStatusSchema: MessageCodec<PartnerProviderStatus> = pb<PartnerProviderStatus>("exa.codeium_common_pb.PartnerProviderStatus", [
+	{ no: 1, name: "active", kind: "message", T: () => PartnerProviderActiveStatusSchema },
+]);
+
 /** Devin message exa.codeium_common_pb.PlanInfo. */
 export interface PlanInfo extends ProtoMessage {
 	teamsTier: TeamsTier;
@@ -2622,6 +2659,7 @@ export interface UserStatus extends ProtoMessage {
 	windsurfProTrialEndTime?: Timestamp;
 	maxNumPremiumChatMessages: bigint;
 	userId: string;
+	partnerProviders: PartnerProviderInfo[];
 }
 
 export const UserStatusSchema: MessageCodec<UserStatus> = pb<UserStatus>("exa.codeium_common_pb.UserStatus", [
@@ -2646,5 +2684,6 @@ export const UserStatusSchema: MessageCodec<UserStatus> = pb<UserStatus>("exa.co
 	{ no: 34, name: "windsurfProTrialEndTime", kind: "message", T: () => TimestampSchema },
 	{ no: 35, name: "maxNumPremiumChatMessages", kind: "int64" },
 	{ no: 36, name: "userId", kind: "string" },
+	{ no: 37, name: "partnerProviders", kind: "message", T: () => PartnerProviderInfoSchema, repeat: true },
 ]);
 

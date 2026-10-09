@@ -5,6 +5,7 @@
 ### Added
 
 - Added routing-session cleanup for OpenAI Responses and Codex while preserving shared provider fallbacks ([#14334](https://github.com/can1357/oh-my-pi/pull/14334) by [@iliaal](https://github.com/iliaal)).
+- Added Devin partner-plan reporting to `/usage`: when a ChatGPT subscription is linked on `app.devin.ai`, the account report now states whether OpenAI-family turns bill to that subscription or to the Devin quota, and exposes the toggles as `metadata.partnerPlans`.
 
 ### Fixed
 

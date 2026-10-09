@@ -15,10 +15,12 @@ import {
 	type GetUserStatusResponse,
 	GetUserStatusResponseSchema,
 	MetadataSchema,
+	PartnerProvider,
 	type PlanInfo,
 	type PlanStatus,
 	TeamsTier,
 	type Timestamp,
+	type UserStatus,
 } from "@oh-my-pi/pi-catalog/discovery/devin-proto";
 import { create, toBinary } from "@oh-my-pi/pi-catalog/discovery/protobuf";
 import { DEVIN_DEFAULT_BASE_URL, devinCliMetadata, devinWireMetadata } from "@oh-my-pi/pi-catalog/wire/devin";
@@ -164,6 +166,40 @@ function devinQuotaLimit(quota: DevinQuotaWindow, scope: UsageScope): UsageLimit
 	};
 }
 
+/**
+ * Devin "token sharing": a linked partner subscription (today only ChatGPT)
+ * takes over billing for that partner's models, so those turns never touch the
+ * credit or quota windows above. `status.active` is the only state the server
+ * spells out on the wire; every other one (expired grant, plan too low, never
+ * linked) leaves it unset and keeps billing on Devin's own quota.
+ */
+interface DevinPartnerPlan {
+	partner: string;
+	label: string;
+	active: boolean;
+	info?: string;
+}
+
+function devinPartnerPlans(userStatus: UserStatus): DevinPartnerPlan[] {
+	return userStatus.partnerProviders.map(entry => {
+		const partner = (PartnerProvider[entry.partner] ?? `partner_${entry.partner}`).toLowerCase();
+		const active = entry.status?.active;
+		const info = active?.info.trim() || undefined;
+		return {
+			partner,
+			label: entry.toggleLabel.trim() || `Use your ${partner} plan`,
+			active: active !== undefined,
+			...(info !== undefined ? { info } : {}),
+		};
+	});
+}
+
+function devinPartnerNote(plan: DevinPartnerPlan): string {
+	return plan.active
+		? `${plan.label}: on - that subscription is billed instead of Devin quota`
+		: `${plan.label}: off - Devin quota is billed`;
+}
+
 function buildDevinReport(response: GetUserStatusResponse): UsageReport | null {
 	const userStatus = response.userStatus;
 	if (!userStatus) return null;
@@ -241,6 +277,7 @@ function buildDevinReport(response: GetUserStatusResponse): UsageReport | null {
 
 	const planEnd = planStatus?.planEnd ? timestampMs(planStatus.planEnd) : undefined;
 	const overageUsd = Number(planStatus?.overageBalanceMicros ?? 0n) / MICROS_PER_USD;
+	const partnerPlans = devinPartnerPlans(userStatus);
 	const metadata: Record<string, unknown> = { source: "seat-management" };
 	if (email !== undefined) metadata.email = email;
 	if (accountId !== undefined) metadata.accountId = accountId;
@@ -249,12 +286,17 @@ function buildDevinReport(response: GetUserStatusResponse): UsageReport | null {
 	if (planName !== undefined) metadata.planType = planName;
 	if (planEnd !== undefined && planEnd > 0) metadata.planEnd = planEnd;
 	if (overageUsd !== 0) metadata.overageBalanceUsd = overageUsd;
+	if (partnerPlans.length > 0) metadata.partnerPlans = partnerPlans;
+
+	const notes: string[] = [];
+	if (overageUsd !== 0) notes.push(`Overage balance: $${overageUsd.toFixed(2)}`);
+	for (const plan of partnerPlans) notes.push(devinPartnerNote(plan));
 
 	return {
 		provider: PROVIDER,
 		fetchedAt: Date.now(),
 		limits,
-		...(overageUsd !== 0 ? { notes: [`Overage balance: $${overageUsd.toFixed(2)}`] } : {}),
+		...(notes.length > 0 ? { notes } : {}),
 		metadata,
 	};
 }

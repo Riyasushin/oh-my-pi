@@ -9,6 +9,11 @@ import {
 	GetUserStatusRequestSchema,
 	GetUserStatusResponseSchema,
 	type Metadata,
+	PartnerProvider,
+	PartnerProviderActiveStatusSchema,
+	type PartnerProviderInfo,
+	PartnerProviderInfoSchema,
+	PartnerProviderStatusSchema,
 	PlanInfoSchema,
 	PlanStatusSchema,
 	TeamsTier,
@@ -61,6 +66,7 @@ interface StatusFixture {
 	weeklyQuotaResetAtUnix?: bigint;
 	overageBalanceMicros?: bigint;
 	withPlanPeriod?: boolean;
+	partnerProviders?: PartnerProviderInfo[];
 }
 
 function userStatusPayload(plan: PlanFixture, status: StatusFixture): Uint8Array {
@@ -102,6 +108,7 @@ function userStatusPayload(plan: PlanFixture, status: StatusFixture): Uint8Array
 			teamId: status.teamId ?? "",
 			teamsTier: plan.teamsTier ?? TeamsTier.UNSPECIFIED,
 			planStatus,
+			partnerProviders: status.partnerProviders ?? [],
 		}),
 		planInfo,
 	});
@@ -335,6 +342,70 @@ describe("Devin account usage", () => {
 
 		expect(report).toBeNull();
 		expect(warnings).toEqual(["Devin user status fetch failed"]);
+	});
+
+	test("reports a linked ChatGPT plan as billing away from Devin quota", async () => {
+		const payload = userStatusPayload(
+			{ billingStrategy: BillingStrategy.QUOTA },
+			{
+				userId: "user-5",
+				weeklyQuotaRemainingPercent: 3,
+				weeklyQuotaResetAtUnix: WEEKLY_RESET_SECONDS,
+				partnerProviders: [
+					create(PartnerProviderInfoSchema, {
+						partner: PartnerProvider.OPENAI,
+						toggleLabel: "Use your ChatGPT plan",
+						status: create(PartnerProviderStatusSchema, {
+							active: create(PartnerProviderActiveStatusSchema, {
+								info: "You're currently using your ChatGPT subscription.",
+							}),
+						}),
+					}),
+				],
+			},
+		);
+
+		const report = await devinUsageProvider.fetchUsage(params("raw-token"), {
+			fetch: mockFetch(payload, {}),
+		});
+
+		if (!report) throw new Error("expected a usage report");
+		expect(report.notes).toEqual(["Use your ChatGPT plan: on - that subscription is billed instead of Devin quota"]);
+		expect(report.metadata?.partnerPlans).toEqual([
+			{
+				partner: "openai",
+				label: "Use your ChatGPT plan",
+				active: true,
+				info: "You're currently using your ChatGPT subscription.",
+			},
+		]);
+	});
+
+	test("treats a partner entry without an active status as Devin-billed", async () => {
+		const payload = userStatusPayload(
+			{ billingStrategy: BillingStrategy.QUOTA },
+			{
+				userId: "user-6",
+				weeklyQuotaRemainingPercent: 40,
+				weeklyQuotaResetAtUnix: WEEKLY_RESET_SECONDS,
+				partnerProviders: [
+					create(PartnerProviderInfoSchema, {
+						partner: PartnerProvider.OPENAI,
+						toggleLabel: "Use your ChatGPT plan",
+					}),
+				],
+			},
+		);
+
+		const report = await devinUsageProvider.fetchUsage(params("raw-token"), {
+			fetch: mockFetch(payload, {}),
+		});
+
+		if (!report) throw new Error("expected a usage report");
+		expect(report.notes).toEqual(["Use your ChatGPT plan: off - Devin quota is billed"]);
+		expect(report.metadata?.partnerPlans).toEqual([
+			{ partner: "openai", label: "Use your ChatGPT plan", active: false },
+		]);
 	});
 
 	test("supports only devin credentials that carry a session token", () => {
